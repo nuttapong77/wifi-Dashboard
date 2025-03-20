@@ -99,18 +99,18 @@ def save_network_metrics_to_db(download_speed, upload_speed, latency, packet_los
     conn.commit()
     conn.close()
 
-# ฟังก์ชันลบข้อมูลที่เก่ากว่า 1 ชั่วโมง
+# ฟังก์ชันลบข้อมูลที่เก่ากว่า 50 ชั่วโมง
 def delete_old_data():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # ลบข้อมูลที่มี timestamp เก่ากว่า 1 ชั่วโมง
+    # ลบข้อมูลที่มี timestamp เก่ากว่า 50 ชั่วโมง
     cursor.execute(''' 
-        DELETE FROM metrics WHERE timestamp < datetime('now', '-24 hour')  
+        DELETE FROM metrics WHERE timestamp < datetime('now', '-50 hour')  
     ''')
 
     cursor.execute(''' 
-        DELETE FROM network_metrics WHERE timestamp < datetime('now', '-24 hour')  
+        DELETE FROM network_metrics WHERE timestamp < datetime('now', '-50 hour')  
     ''')
 
     conn.commit()
