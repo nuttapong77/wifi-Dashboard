@@ -106,11 +106,11 @@ def delete_old_data():
 
     # ลบข้อมูลที่มี timestamp เก่ากว่า 1 ชั่วโมง
     cursor.execute(''' 
-        DELETE FROM metrics WHERE timestamp < datetime('now', '-7 day')  
+        DELETE FROM metrics WHERE timestamp < datetime('now', '-24 hour')  
     ''')
 
     cursor.execute(''' 
-        DELETE FROM network_metrics WHERE timestamp < datetime('now', '-7 day ')  
+        DELETE FROM network_metrics WHERE timestamp < datetime('now', '-24 hour')  
     ''')
 
     conn.commit()
@@ -231,31 +231,6 @@ def get_device_count():
     sniff(prn=arp_display, filter="arp", store=0, count=10, timeout=10)
     return len(devices)
 
-# ฟังก์ชันตรวจจับ DDoS
-def detect_ddos(download_speed, upload_speed, packet_loss, bytes_sent, bytes_recv, device_count):
-    alerts = []
-
-    # ตรวจสอบว่าค่ามีการเกิน threshold หรือไม่
-    if download_speed > 50 * 1e6:
-        alerts.append("ตรวจพบการโจมตี DDoS: ความเร็วการดาวน์โหลดสูงเกินไป")
-    
-    if upload_speed > 50 * 1e6:
-        alerts.append("ตรวจพบการโจมตี DDoS: ความเร็วการอัปโหลดสูงเกินไป")
-    
-    if packet_loss > 0.5:
-        alerts.append(f"ตรวจพบการโจมตี DDoS: การสูญเสียแพ็กเกจสูง ({packet_loss:.2%})")
-    
-    if bytes_sent > 100 * 1e6:
-        alerts.append("ตรวจพบการโจมตี DDoS: ข้อมูลที่ส่งสูงเกินไป")
-    
-    if bytes_recv > 100 * 1e6:
-        alerts.append("ตรวจพบการโจมตี DDoS: ข้อมูลที่รับสูงเกินไป")
-    
-    if device_count > 50:
-        alerts.append("ตรวจพบการโจมตี DDoS: อุปกรณ์ในเครือข่ายมากเกินไป")
-
-    return alerts
-
 # Collect metrics and print information
 def collect_metrics():
     wifi_info = get_current_wifi_info()
@@ -276,4 +251,36 @@ def collect_metrics():
     # Update latency
     latency = get_latency()
     if latency is not None:
-        latency_gauge.set
+        latency_gauge.set(latency)
+        print(f"Latency: {latency:.2f} ms")
+
+    # Update packet loss
+    packet_loss = get_packet_loss()
+    packet_loss_gauge.set(packet_loss)
+    print(f"Packet Loss: {packet_loss:.2%}")
+
+    # Update bandwidth utilization
+    bytes_sent, bytes_recv = get_bandwidth_utilization()
+    bytes_sent_gauge.set(bytes_sent)
+    bytes_recv_gauge.set(bytes_recv)
+
+    # Update device count
+    device_count = get_device_count()
+    device_count_gauge.set(device_count)
+
+    # Save network metrics to database
+    save_network_metrics_to_db(download_speed, upload_speed, latency, packet_loss, bytes_sent, bytes_recv, device_count, ssid)
+
+# Start Prometheus server
+start_http_server(8000)
+
+# Setup database
+setup_database()
+
+# Collect Wi-Fi networks every 60 seconds
+schedule.every(DELAY).seconds.do(collect_and_save_wifi_networks)
+schedule.every(DELAY).seconds.do(collect_metrics)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1) 
