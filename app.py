@@ -6,7 +6,7 @@ import pandas as pd
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 import requests
-from ddos_detection import *  # ฟังก์ชันตรวจจับ DDoS
+from ddos_detection import *
 
 # สร้างแอป Dash
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
@@ -30,7 +30,7 @@ def get_data_from_db(ssid_filter=None):
     conn = sqlite3.connect('network_metrics.db')
     query = """
     SELECT timestamp, ssid, download_speed, upload_speed, latency, 
-           packet_loss, bytes_sent, bytes_recv, device_count, bandwidth
+           packet_loss, bytes_sent, bytes_recv, device_count
     FROM network_metrics
     """
     if ssid_filter and ssid_filter != 'All':
@@ -69,12 +69,12 @@ isp_info = get_isp_info()
 
 # Header แสดงข้อมูล ISP
 header = dbc.Card(
-    dbc.CardBody([ 
+    dbc.CardBody([
         html.H4("🌐 Network Information", className="card-title"),
         html.P(f"🆔 IP Address: {isp_info['ip']}"),
         html.P(f"🏢 ISP: {isp_info['isp']}"),
         html.P(f"📍 Location: {isp_info['city']}, {isp_info['country']}"),
-    ]), 
+    ]),
     className="mb-3 text-light bg-dark"
 )
 
@@ -107,9 +107,6 @@ sidebar = dbc.Card(
                 dbc.Input(id="threshold-download", type="number", placeholder="Download Speed (Mbps)", className="mb-2"),
                 dbc.Input(id="threshold-latency", type="number", placeholder="Latency (ms)", className="mb-2"),
                 dbc.Input(id="threshold-packet-loss", type="number", placeholder="Packet Loss (%)"),
-                dbc.Input(id="threshold-upload", type="number", placeholder="Upload Speed (Mbps)", className="mb-2"),
-                dbc.Input(id="threshold-bandwidth", type="number", placeholder="Bandwidth Utilization (Mbps)", className="mb-2"),
-                dbc.Input(id="threshold-device-count", type="number", placeholder="Device Count", className="mb-2"),
             ],
             style={"display": "none"}
         )
@@ -154,50 +151,26 @@ def update_ssid_options(n):
      Input('interval-update', 'n_intervals')],
     [State('threshold-download', 'value'),
      State('threshold-latency', 'value'),
-     State('threshold-packet-loss', 'value'),
-     State('threshold-upload', 'value'),
-     State('threshold-bandwidth', 'value'),
-     State('threshold-device-count', 'value')]
+     State('threshold-packet-loss', 'value')]
 )
-def update_graph_and_alert(selected_ssids, data_type, n, threshold_download, threshold_latency, threshold_packet_loss,
-                           threshold_upload, threshold_bandwidth, threshold_device_count):
-    # กรองข้อมูลตาม SSID ที่เลือก
+def update_graph_and_alert(selected_ssids, data_type, n, threshold_download, threshold_latency, threshold_packet_loss):
     df = get_data_from_db(selected_ssids)
-    
-    if df.empty:
-        return {'data': [], 'layout': {}}, "", False
     
     alert_message = ""
     is_alert = False
     
-    # ตรวจสอบเงื่อนไขที่กำหนด
-    if threshold_download and df['download_speed'].min() < threshold_download:
-        alert_message += f"⚠️ Download Speed ต่ำกว่า {threshold_download} Mbps!\n"
-        is_alert = True
-
-    if threshold_latency and df['latency'].max() > threshold_latency:
-        alert_message += f"⚠️ Latency สูงกว่า {threshold_latency} ms!\n"
-        is_alert = True
-
-    if threshold_packet_loss and df['packet_loss'].max() > threshold_packet_loss:
-        alert_message += f"⚠️ Packet Loss สูงกว่า {threshold_packet_loss}%!\n"
-        is_alert = True
-
-    if threshold_upload and df['upload_speed'].min() < threshold_upload:
-        alert_message += f"⚠️ Upload Speed ต่ำกว่า {threshold_upload} Mbps!\n"
-        is_alert = True
-
-    if threshold_bandwidth and df['bandwidth'].max() < threshold_bandwidth:
-        alert_message += f"⚠️ Bandwidth Utilization ต่ำกว่า {threshold_bandwidth} Mbps!\n"
-        is_alert = True
-
-    if threshold_device_count and df['device_count'].max() > threshold_device_count:
-        alert_message += f"⚠️ จำนวนอุปกรณ์เชื่อมต่อมากกว่า {threshold_device_count}!\n"
-        is_alert = True
-
-    # สร้างกราฟตามประเภทข้อมูลที่เลือก
-    figure = create_graph(data_type, f"{data_type} Over Time", data_type, selected_ssids)
+    if not df.empty:
+        if threshold_download and df['download_speed'].min() < threshold_download:
+            alert_message += f"⚠️ Download Speed ต่ำกว่า {threshold_download} Mbps!\n"
+            is_alert = True
+        if threshold_latency and df['latency'].max() > threshold_latency:
+            alert_message += f"⚠️ Latency สูงกว่า {threshold_latency} ms!\n"
+            is_alert = True
+        if threshold_packet_loss and df['packet_loss'].max() > threshold_packet_loss:
+            alert_message += f"⚠️ Packet Loss สูงกว่า {threshold_packet_loss}%!\n"
+            is_alert = True
     
+    figure = create_graph(data_type, f"{data_type} Over Time", data_type, selected_ssids)
     return figure, alert_message, is_alert
 
 # Callback สำหรับแสดง/ซ่อน Sidebar
