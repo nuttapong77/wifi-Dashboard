@@ -106,11 +106,11 @@ def delete_old_data():
 
     # ลบข้อมูลที่มี timestamp เก่ากว่า 1 ชั่วโมง
     cursor.execute(''' 
-        DELETE FROM metrics WHERE timestamp < datetime('now', '-24 hour')  
+        DELETE FROM metrics WHERE timestamp < datetime('now', '-7 day')  
     ''')
 
     cursor.execute(''' 
-        DELETE FROM network_metrics WHERE timestamp < datetime('now', '-24 hour')  
+        DELETE FROM network_metrics WHERE timestamp < datetime('now', '-7 day ')  
     ''')
 
     conn.commit()
