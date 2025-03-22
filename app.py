@@ -64,17 +64,42 @@ def create_graph(y_column, title, y_label, ssid_filter=None):
     )
     return {'data': traces, 'layout': layout}
 
+# ฟังก์ชันสร้างตารางบันทึกการแจ้งเตือนในฐานข้อมูล
+def create_alerts_table():
+    conn = sqlite3.connect('network_metrics.db')
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT,
+        alert_message TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+create_alerts_table()
+
+# ฟังก์ชันบันทึกการแจ้งเตือน
+def log_alert(alert_message):
+    conn = sqlite3.connect('network_metrics.db')
+    cursor = conn.cursor()
+    timestamp = pd.to_datetime('now').strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute("INSERT INTO alerts (timestamp, alert_message) VALUES (?, ?)", (timestamp, alert_message))
+    conn.commit()
+    conn.close()
+
 # ดึงข้อมูล ISP
 isp_info = get_isp_info()
 
 # Header แสดงข้อมูล ISP
 header = dbc.Card(
-    dbc.CardBody([
+    dbc.CardBody([ 
         html.H4("🌐 Network Information", className="card-title"),
         html.P(f"🆔 IP Address: {isp_info['ip']}"),
         html.P(f"🏢 ISP: {isp_info['isp']}"),
         html.P(f"📍 Location: {isp_info['city']}, {isp_info['country']}"),
-    ]),
+    ]), 
     className="mb-3 text-light bg-dark"
 )
 
@@ -86,7 +111,7 @@ sidebar = dbc.Card(
             id="sidebar-content",
             children=[
                 html.H5("📡 Select SSID", className="text-light"),
-                dcc.Dropdown(id='wifi-ssid-dropdown', multi=True, placeholder="เลือก SSID...", style={'color': 'black'}),
+                dcc.Dropdown(id='wifi-ssid-dropdown', multi=True, placeholder="Select SSID...", style={'color': 'black'}),
                 html.Hr(),
                 html.H5("📊 Select Data Type", className="text-light"),
                 dcc.RadioItems(
@@ -107,6 +132,9 @@ sidebar = dbc.Card(
                 dbc.Input(id="threshold-download", type="number", placeholder="Download Speed (Mbps)", className="mb-2"),
                 dbc.Input(id="threshold-latency", type="number", placeholder="Latency (ms)", className="mb-2"),
                 dbc.Input(id="threshold-packet-loss", type="number", placeholder="Packet Loss (%)"),
+                dbc.Input(id="threshold-upload", type="number", placeholder="Upload Speed (Mbps)", className="mb-2"),
+                dbc.Input(id="threshold-bandwidth", type="number", placeholder="Bandwidth Utilization (%)"),
+                dbc.Input(id="threshold-device-count", type="number", placeholder="Device Count", className="mb-2"),
             ],
             style={"display": "none"}
         )
@@ -116,15 +144,32 @@ sidebar = dbc.Card(
     className="p-3 mb-4"
 )
 
+# ปุ่มสำหรับดูประวัติการแจ้งเตือน
+history_button = dbc.Button("📜 View Alert History", id="view-alert-history", color="info", className="mb-3")
+
+# โครงสร้าง Modal สำหรับแสดงประวัติการแจ้งเตือน
+alert_history_modal = dbc.Modal(
+    [
+        dbc.ModalHeader("⚠️ Alert History"),
+        dbc.ModalBody(id="alert-history-body"),
+        dbc.ModalFooter(
+            dbc.Button("Close", id="close-modal", className="ml-auto", color="secondary")
+        ),
+    ],
+    id="alert-history-modal",
+)
+
 # Layout ของ Dash App
 app.layout = dbc.Container([
     header,  # แสดงข้อมูล ISP ด้านบน
     dbc.Row([
         dbc.Col(sidebar, width=3),
-        dbc.Col([
+        dbc.Col([ 
             html.H3("📶 Wi-Fi Performance Dashboard", className="text-center text-light mb-4"),
             dcc.Interval(id='interval-update', interval=10*1000, n_intervals=1),
             dbc.Alert(id='alert-message', color='danger', is_open=False, dismissable=True, className="mt-3"),
+            history_button,  # ปุ่มดูประวัติ
+            alert_history_modal,  # Modal สำหรับแสดงประวัติ
             dcc.Graph(id='wifi-graph', className="mt-3")
         ], width=9)
     ])
@@ -161,17 +206,60 @@ def update_graph_and_alert(selected_ssids, data_type, n, threshold_download, thr
     
     if not df.empty:
         if threshold_download and df['download_speed'].min() < threshold_download:
-            alert_message += f"⚠️ Download Speed ต่ำกว่า {threshold_download} Mbps!\n"
+            alert_message += f"⚠️  Download Speed lower than {threshold_download} Mbps!\n"
             is_alert = True
         if threshold_latency and df['latency'].max() > threshold_latency:
-            alert_message += f"⚠️ Latency สูงกว่า {threshold_latency} ms!\n"
+            alert_message += f"⚠️ Latency more than {threshold_latency} ms!\n"
             is_alert = True
         if threshold_packet_loss and df['packet_loss'].max() > threshold_packet_loss:
-            alert_message += f"⚠️ Packet Loss สูงกว่า {threshold_packet_loss}%!\n"
+            alert_message += f"⚠️ Packet Loss more than {threshold_packet_loss}%!\n"
             is_alert = True
+        
+        # บันทึกการแจ้งเตือน
+        if is_alert and alert_message:
+            log_alert(alert_message)
     
     figure = create_graph(data_type, f"{data_type} Over Time", data_type, selected_ssids)
     return figure, alert_message, is_alert
+
+# Callback สำหรับแสดงประวัติการแจ้งเตือน
+@app.callback(
+    Output("alert-history-body", "children"),
+    Input("view-alert-history", "n_clicks"),
+    prevent_initial_call=True
+)
+def show_alert_history(n_clicks):
+    conn = sqlite3.connect('network_metrics.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM alerts ORDER BY timestamp DESC LIMIT 10")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    if not rows:
+        return "No alerts found."
+    
+    alert_list = []
+    for row in rows:
+        alert_list.append(html.Div([
+            html.P(f"Timestamp: {row[1]}", className="font-weight-bold"),
+            html.P(f"Message: {row[2]}"),
+            html.Hr()
+        ]))
+    
+    return alert_list
+
+# Callback สำหรับเปิด/ปิด modal
+@app.callback(
+    Output("alert-history-modal", "is_open"),
+    Input("view-alert-history", "n_clicks"),
+    Input("close-modal", "n_clicks"),
+    State("alert-history-modal", "is_open"),
+    prevent_initial_call=True
+)
+def toggle_modal(n1, n2, is_open):
+    if n1 or n2:
+        return not is_open
+    return is_open
 
 # Callback สำหรับแสดง/ซ่อน Sidebar
 @app.callback(
@@ -185,3 +273,4 @@ def toggle_sidebar(n_clicks):
 # เรียกใช้งานแอป
 if __name__ == '__main__':
     app.run_server(debug=True)
+
