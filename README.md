@@ -83,3 +83,10 @@ Run the container:
 
 bash
 docker run -p 8000:8000 wifi-analyzer
+
+3. Recommendations for Further Development
+Testing: Write unit tests for critical parts of your code, such as the functions that handle metrics collection or database interactions.
+
+Additional Features: You can add features such as alerting when specific metrics exceed thresholds, or expose APIs to allow external systems to pull data from your app.
+
+Scalability: For production environments, consider using a more robust database like PostgreSQL and optimizing the collection of metrics to handle larger data volumes.
